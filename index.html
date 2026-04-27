@@ -520,6 +520,10 @@
         </div>
         <div class="map-embed-wrapper">
           <div id="fleet-map"></div>
+          <div id="aisDebugOverlay" style="position:absolute;bottom:8px;left:8px;z-index:1000;background:rgba(15,23,42,0.82);border:1px solid rgba(0,158,132,0.3);border-radius:8px;padding:8px 12px;font-family:'DM Mono',monospace;font-size:9px;color:#94a3b8;max-width:340px;max-height:110px;overflow-y:auto;line-height:1.6;pointer-events:none;">
+            <span style="color:#009e84;letter-spacing:1px;">AIS DEBUG</span><br>
+            <span id="aisDebugLog">Waiting for connection…</span>
+          </div>
         </div>
         <div class="map-info-bar" id="mapInfoBar">
           <span class="mvi-label">Click a vessel tab or marker for live AIS data</span>
@@ -1312,38 +1316,53 @@ function initFleetMap() {
   initAISStream();
 }
 
+// ── AIS DEBUG OVERLAY ─────────────────────────────────────────────────────────
+const aisDebugLines = [];
+function aisDebug(msg) {
+  const t = new Date().toLocaleTimeString('en-AE', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  aisDebugLines.push('[' + t + '] ' + msg);
+  if (aisDebugLines.length > 8) aisDebugLines.shift();
+  const el = document.getElementById('aisDebugLog');
+  if (el) el.innerHTML = aisDebugLines.join('<br>');
+  console.log('[AISStream]', msg);
+}
+
 // ── AISStream.io WEBSOCKET ────────────────────────────────────────────────────
 function initAISStream() {
   if (aisSocket && (aisSocket.readyState === WebSocket.CONNECTING || aisSocket.readyState === WebSocket.OPEN)) return;
 
   clearTimeout(aisReconnectTimer);
   setAISStatus('connecting');
+  aisDebug('Opening WebSocket to AISStream.io…');
 
   try {
     aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
   } catch(e) {
-    console.error('AISStream WebSocket failed to open:', e);
+    aisDebug('WebSocket open failed: ' + e.message);
     setAISStatus('error');
     scheduleAISReconnect();
     return;
   }
 
   aisSocket.onopen = function() {
-    console.log('[AISStream] Connected — subscribing to fleet MMSIs');
+    aisDebug('WebSocket connected ✓');
     setAISStatus('connecting');
+    startKeepalive();
 
-    // Build MMSI list (integers)
-    const mmsiList = Object.values(VESSEL_MMSI)
+    // Must be sent within 3 seconds of connection or server closes
+    // Key is "Apikey" (lowercase k) per AISStream.io docs
+    const mmsiStrings = Object.values(VESSEL_MMSI)
       .filter(d => d.mmsi)
-      .map(d => parseInt(d.mmsi, 10));
+      .map(d => String(d.mmsi));
 
     const subscribeMsg = {
-      APIKey: AISSTREAM_KEY,
-      BoundingBoxes: [[[-90, -180], [90, 180]]],  // global — filtered by MMSI list
-      FilterMessageTypes: ['PositionReport'],
-      FiltersShipMMSI: mmsiList.map(String)
+      Apikey: AISSTREAM_KEY,
+      BoundingBoxes: [[[-90, -180], [90, 180]]],
+      FiltersShipMMSI: mmsiStrings,
+      FilterMessageTypes: ['PositionReport']
     };
 
+    aisDebug('Subscribing to ' + mmsiStrings.length + ' MMSIs…');
     aisSocket.send(JSON.stringify(subscribeMsg));
   };
 
@@ -1352,17 +1371,18 @@ function initAISStream() {
       const msg = JSON.parse(event.data);
       handleAISMessage(msg);
     } catch(e) {
-      console.warn('[AISStream] Parse error:', e);
+      aisDebug('Parse error: ' + e.message);
     }
   };
 
   aisSocket.onerror = function(e) {
-    console.error('[AISStream] WebSocket error:', e);
+    aisDebug('WebSocket error — see console');
     setAISStatus('error');
   };
 
   aisSocket.onclose = function(e) {
-    console.warn('[AISStream] Connection closed (code ' + e.code + '). Reconnecting…');
+    aisDebug('Connection closed (code ' + e.code + ') — reconnecting in 8s');
+    clearInterval(aisKeepaliveTimer);
     setAISStatus('reconnecting');
     scheduleAISReconnect();
   };
@@ -1371,84 +1391,92 @@ function initAISStream() {
 function scheduleAISReconnect() {
   clearTimeout(aisReconnectTimer);
   aisReconnectTimer = setTimeout(function() {
-    console.log('[AISStream] Attempting reconnect…');
+    aisDebug('Reconnecting…');
+    aisSocket = null;
     initAISStream();
-  }, 8000);  // retry in 8s
+  }, 8000);
+}
+
+// Keepalive: AISStream closes connections that are idle too long
+let aisKeepaliveTimer = null;
+function startKeepalive() {
+  clearInterval(aisKeepaliveTimer);
+  aisKeepaliveTimer = setInterval(function() {
+    if (aisSocket && aisSocket.readyState === WebSocket.OPEN) {
+      // Send a ping-style empty object; AISStream ignores unknown fields gracefully
+      try { aisSocket.send(JSON.stringify({ ping: true })); } catch(e) {}
+    }
+  }, 25000);  // every 25s
 }
 
 // ── HANDLE AIS MESSAGE ────────────────────────────────────────────────────────
 function handleAISMessage(msg) {
-  // First message is typically a confirmation/metadata
-  if (msg.MessageType === 'ConnectionStatus' || !msg.MessageType) {
-    // ConnectionStatus or welcome message — mark as live
-    setAISStatus('live');
+  aisDebug('MSG: ' + (msg.MessageType || 'unknown type'));
+
+  // Any message received = connection is live
+  setAISStatus('live');
+
+  // Skip non-position messages
+  if (!msg.MessageType || msg.MessageType !== 'PositionReport') return;
+
+  const pr   = msg.Message && msg.Message.PositionReport;
+  const meta = msg.MetaData;
+  if (!pr || !meta) {
+    aisDebug('PositionReport missing Message or MetaData');
     return;
   }
 
-  if (msg.MessageType !== 'PositionReport') return;
-
-  const pr  = msg.Message && msg.Message.PositionReport;
-  const meta = msg.MetaData;
-  if (!pr || !meta) return;
-
-  setAISStatus('live');  // got data → definitely live
-
-  const mmsiStr = String(meta.MMSI || pr.UserID || '');
+  // MMSI comes as integer from MetaData.MMSI — convert to string for lookup
+  const mmsiStr = String(meta.MMSI || meta.MMSI_String || pr.UserID || '');
   const name    = MMSI_TO_NAME[mmsiStr];
-  if (!name) return;  // not one of our fleet
+  if (!name) {
+    aisDebug('MMSI ' + mmsiStr + ' not in fleet');
+    return;
+  }
 
-  const lat = pr.Latitude;
-  const lng = pr.Longitude;
+  const lat = typeof pr.Latitude  === 'number' ? pr.Latitude  : parseFloat(pr.Latitude);
+  const lng = typeof pr.Longitude === 'number' ? pr.Longitude : parseFloat(pr.Longitude);
   const sog = pr.Sog  || 0;
   const cog = pr.Cog  || 0;
   const hdg = pr.TrueHeading !== undefined ? pr.TrueHeading : 511;
   const navStatus = pr.NavigationalStatus !== undefined ? pr.NavigationalStatus : 15;
 
-  // Sanity-check coordinates
+  if (isNaN(lat) || isNaN(lng)) return;
   if (lat === 0 && lng === 0) return;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
 
-  const now   = new Date();
+  const now     = new Date();
   const timeStr = now.toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  // Store live data
   aisLiveData[mmsiStr] = { lat, lng, sog, cog, hdg, navStatus, time: timeStr, name };
 
-  // Update marker position
   const marker = fleetMarkers[name];
   if (!marker) return;
 
   const color = vesselColors[name] || '#6b7280';
   marker.setLatLng([lat, lng]);
 
-  // Update icon to directional arrow
   const newIcon = buildVesselIcon(color, true, true, cog);
   marker.setIcon(newIcon);
 
-  // Update tooltip class to show it's live
   try {
     const tooltipEl = marker.getTooltip && marker.getTooltip() && marker.getTooltip().getElement();
     if (tooltipEl) tooltipEl.classList.add('live-label');
   } catch(e) {}
 
-  // Refresh popup if it's open
-  const popup = marker.getPopup();
-  if (popup && marker.isPopupOpen()) {
-    popup.setContent(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]));
-  } else {
-    marker.bindPopup(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]), { maxWidth: 300 });
+  marker.bindPopup(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]), { maxWidth: 300 });
+  if (marker.isPopupOpen()) {
+    marker.getPopup().setContent(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]));
   }
 
-  // Update stored position for tab navigation
   VESSEL_MMSI[name].lat = lat;
   VESSEL_MMSI[name].lng = lng;
 
-  // If this vessel's tab is active, update live bar
   if (activeTab === name) {
     updateAISLiveBar(name, aisLiveData[mmsiStr]);
   }
 
-  console.log('[AISStream] ' + name + ' → ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + ' | SOG ' + sog + ' kn | COG ' + cog + '°');
+  aisDebug('✓ ' + name + ' ' + lat.toFixed(4) + ',' + lng.toFixed(4) + ' SOG:' + sog + 'kn');
 }
 
 // ── LIVE BAR (below map) ──────────────────────────────────────────────────────

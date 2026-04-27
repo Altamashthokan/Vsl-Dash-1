@@ -510,7 +510,11 @@
         <div class="map-card-header">
           <div class="map-card-title">
             <div class="map-live-dot"></div>
-            Fleet Positions
+            Fleet Positions · AISStream.io
+          </div>
+          <div id="aisStatusBadge" style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:rgba(107,114,128,0.1);border:1px solid rgba(107,114,128,0.2);font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.5px;color:#6b7280;white-space:nowrap;">
+            <span id="aisStatusDot" style="width:6px;height:6px;border-radius:50%;background:#6b7280;display:inline-block;"></span>
+            <span id="aisStatusText">AIS · Connecting…</span>
           </div>
           <div class="vessel-tabs" id="vesselTabs"></div>
         </div>
@@ -518,7 +522,18 @@
           <div id="fleet-map"></div>
         </div>
         <div class="map-info-bar" id="mapInfoBar">
-          <span class="mvi-label">Click a vessel tab or marker to track it live</span>
+          <span class="mvi-label">Click a vessel tab or marker for live AIS data</span>
+        </div>
+        <div id="aisLiveBar" style="display:none;padding:8px 18px;border-top:1px solid rgba(0,158,132,0.12);background:rgba(0,158,132,0.03);font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);flex-wrap:wrap;align-items:center;gap:16px;">
+          <span style="color:var(--accent);letter-spacing:1px;font-size:9px;text-transform:uppercase;">LIVE AIS</span>
+          <span id="aisBarVessel" style="font-weight:500;color:var(--text)"></span>
+          <span><span style="color:var(--text3);font-size:9px;">LAT</span> <span id="aisBarLat">—</span></span>
+          <span><span style="color:var(--text3);font-size:9px;">LON</span> <span id="aisBarLon">—</span></span>
+          <span><span style="color:var(--text3);font-size:9px;">SOG</span> <span id="aisBarSog">—</span> kn</span>
+          <span><span style="color:var(--text3);font-size:9px;">COG</span> <span id="aisBarCog">—</span>°</span>
+          <span><span style="color:var(--text3);font-size:9px;">HDG</span> <span id="aisBarHdg">—</span>°</span>
+          <span><span style="color:var(--text3);font-size:9px;">NAV STATUS</span> <span id="aisBarNav">—</span></span>
+          <span style="margin-left:auto;color:var(--text3);font-size:9px;" id="aisBarTime"></span>
         </div>
       </div>
     </div>
@@ -1105,10 +1120,354 @@ const VESSEL_MMSI = {
   "Sea Force":        { mmsi: null,        lat: 24.7,  lng: 54.8  },
 };
 
+// Reverse lookup: MMSI → vessel name
+const MMSI_TO_NAME = {};
+Object.entries(VESSEL_MMSI).forEach(([name, data]) => {
+  if (data.mmsi) MMSI_TO_NAME[data.mmsi] = name;
+});
+
+// AIS navigation status codes
+const AIS_NAV_STATUS = [
+  'Under way (engine)', 'At anchor', 'Not under command', 'Restricted manoeuvrability',
+  'Constrained by draught', 'Moored', 'Aground', 'Engaged in fishing',
+  'Under way (sailing)', 'Reserved', 'Reserved', 'Towing astern',
+  'Towing alongside', 'Reserved', 'AIS-SART', 'Not defined'
+];
+
 let fleetMap = null;
 let fleetMarkers = {};
 let activeTab = "overview";
+let aisSocket = null;
+let aisReconnectTimer = null;
+let aisLiveData = {};   // mmsi → latest position report
 
+const AISSTREAM_KEY = 'af32fb318a20bafff3993d7bf6928473f63972b8';
+
+// ── AIS STATUS BADGE ──────────────────────────────────────────────────────────
+function setAISStatus(state) {
+  // state: 'connecting' | 'live' | 'error' | 'reconnecting'
+  const dot  = document.getElementById('aisStatusDot');
+  const text = document.getElementById('aisStatusText');
+  const badge = document.getElementById('aisStatusBadge');
+  if (!dot || !text || !badge) return;
+  const map = {
+    connecting:   { color: '#d97706', bg: 'rgba(217,119,6,0.1)',   border: 'rgba(217,119,6,0.25)',   label: 'AIS · Connecting…',    anim: false },
+    live:         { color: '#009e84', bg: 'rgba(0,158,132,0.1)',   border: 'rgba(0,158,132,0.25)',   label: 'AIS · Live',           anim: true  },
+    reconnecting: { color: '#d97706', bg: 'rgba(217,119,6,0.1)',   border: 'rgba(217,119,6,0.25)',   label: 'AIS · Reconnecting…',  anim: false },
+    error:        { color: '#dc2626', bg: 'rgba(220,38,38,0.08)',  border: 'rgba(220,38,38,0.2)',    label: 'AIS · Disconnected',   anim: false },
+  };
+  const s = map[state] || map.error;
+  dot.style.background  = s.color;
+  dot.style.animation   = s.anim ? 'vf-pulse 1.5s infinite' : 'none';
+  text.style.color      = s.color;
+  text.textContent      = s.label;
+  badge.style.background = s.bg;
+  badge.style.borderColor = s.border;
+}
+
+// ── POPUP HTML ────────────────────────────────────────────────────────────────
+function buildPopupHTML(name, mmsi, color, livePos) {
+  const vf  = mmsi ? "https://www.vesselfinder.com/vessels/details/" + mmsi : null;
+  const mt  = mmsi ? "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + mmsi : null;
+  const mst = mmsi ? "https://www.myshiptracking.com/?mmsi=" + mmsi : null;
+
+  let liveHTML = '';
+  if (livePos) {
+    const navLabel = AIS_NAV_STATUS[livePos.navStatus] || 'Unknown';
+    liveHTML = (
+      '<div style="margin:8px 0;padding:8px;background:rgba(0,158,132,0.06);border-radius:8px;border:1px solid rgba(0,158,132,0.15);">' +
+      '<div style="font-family:\'DM Mono\',monospace;font-size:9px;color:#009e84;letter-spacing:1px;margin-bottom:6px;">● LIVE AIS DATA</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-family:\'DM Mono\',monospace;font-size:10px;">' +
+      '<span style="color:#64748b">LAT</span><span style="color:#0f172a;font-weight:500">' + livePos.lat.toFixed(5) + '°</span>' +
+      '<span style="color:#64748b">LON</span><span style="color:#0f172a;font-weight:500">' + livePos.lng.toFixed(5) + '°</span>' +
+      '<span style="color:#64748b">SOG</span><span style="color:#0f172a;font-weight:500">' + livePos.sog.toFixed(1) + ' kn</span>' +
+      '<span style="color:#64748b">COG</span><span style="color:#0f172a;font-weight:500">' + livePos.cog.toFixed(1) + '°</span>' +
+      '<span style="color:#64748b">HDG</span><span style="color:#0f172a;font-weight:500">' + (livePos.hdg === 511 ? '—' : livePos.hdg + '°') + '</span>' +
+      '<span style="color:#64748b">NAV</span><span style="color:#0f172a;font-weight:500">' + navLabel + '</span>' +
+      '</div>' +
+      '<div style="font-family:\'DM Mono\',monospace;font-size:8px;color:#94a3b8;margin-top:6px;">Updated: ' + livePos.time + '</div>' +
+      '</div>'
+    );
+  }
+
+  return (
+    '<div>' +
+    '<div class="vessel-popup-name" style="color:' + color + '">' + name + '</div>' +
+    '<div class="vessel-popup-mmsi">' + (mmsi ? 'MMSI: ' + mmsi : 'MMSI not assigned') + '</div>' +
+    liveHTML +
+    (mmsi ? (
+      '<div class="vessel-popup-links">' +
+      '<a href="' + vf  + '" target="_blank" class="vessel-popup-link">📡 VesselFinder</a>' +
+      '<a href="' + mt  + '" target="_blank" class="vessel-popup-link">🗺 MarineTraffic</a>' +
+      '<a href="' + mst + '" target="_blank" class="vessel-popup-link">🛰 MyShipTracking</a>' +
+      '</div>'
+    ) : '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">No MMSI — tracking unavailable</div>') +
+    '</div>'
+  );
+}
+
+// ── VESSEL ICON ───────────────────────────────────────────────────────────────
+function buildVesselIcon(color, hasMMSI, isLive, cog) {
+  // Draw an arrow rotated to COG for live vessels; circle for non-live
+  const size = 38;
+  const r = size / 2;
+
+  let inner;
+  if (isLive && cog !== undefined && cog !== null) {
+    // Directional arrow rotated to COG
+    inner = (
+      '<div style="' +
+        'width:' + size + 'px;height:' + size + 'px;' +
+        'display:flex;align-items:center;justify-content:center;' +
+        'position:relative;' +
+      '">' +
+      '<svg width="' + size + '" height="' + size + '" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg" ' +
+           'style="transform:rotate(' + cog + 'deg);filter:drop-shadow(0 2px 6px rgba(0,0,0,0.28));">' +
+        '<circle cx="19" cy="19" r="17" fill="' + color + '" stroke="#fff" stroke-width="2.5"/>' +
+        '<polygon points="19,5 13,27 19,23 25,27" fill="#fff" opacity="0.92"/>' +
+      '</svg>' +
+      '</div>'
+    );
+  } else {
+    inner = (
+      '<div style="' +
+        'width:' + size + 'px;height:' + size + 'px;border-radius:50%;' +
+        'background:' + color + ';' +
+        'border:3px solid #fff;' +
+        'box-shadow:0 2px 10px rgba(0,0,0,0.25);' +
+        'display:flex;align-items:center;justify-content:center;' +
+        'font-size:16px;' +
+        (hasMMSI ? '' : 'opacity:0.55;') +
+      '">⛴</div>'
+    );
+  }
+
+  const pulseDot = (
+    '<div style="' +
+      'position:absolute;top:-4px;right:-4px;' +
+      'width:11px;height:11px;border-radius:50%;' +
+      'background:' + (isLive ? '#009e84' : (hasMMSI ? '#d97706' : '#94a3b8')) + ';' +
+      'border:2px solid #fff;' +
+      (isLive ? 'animation:vf-pulse 2s infinite;' : '') +
+    '"></div>'
+  );
+
+  return L.divIcon({
+    className: '',
+    html: '<div style="position:relative;width:' + size + 'px;height:' + size + 'px;">' + inner + pulseDot + '</div>',
+    iconSize: [size, size],
+    iconAnchor: [r, r],
+    popupAnchor: [0, -22]
+  });
+}
+
+// ── MAP INIT ──────────────────────────────────────────────────────────────────
+function initFleetMap() {
+  if (fleetMap) return;
+
+  fleetMap = L.map('fleet-map', {
+    center: [24.5, 55.5],
+    zoom: 6,
+    zoomControl: true,
+    attributionControl: true
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> | Live AIS: AISStream.io',
+    subdomains: 'abcd', maxZoom: 18
+  }).addTo(fleetMap);
+
+  // Inject shared styles
+  const styleEl = document.createElement('style');
+  styleEl.textContent = (
+    '@keyframes vf-pulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.5);opacity:0.5;} }' +
+    '.vessel-label-tooltip { background:rgba(255,255,255,0.93)!important; border:1px solid #e2e8f0!important; ' +
+    'font-family:"DM Mono",monospace!important; font-size:10px!important; font-weight:500!important; ' +
+    'color:#0f172a!important; padding:2px 7px!important; border-radius:20px!important; ' +
+    'box-shadow:0 2px 8px rgba(0,0,0,0.12)!important; white-space:nowrap!important; }' +
+    '.vessel-label-tooltip.live-label { border-color:rgba(0,158,132,0.4)!important; color:#007a65!important; }' +
+    '.vessel-label-tooltip::before { display:none!important; }'
+  );
+  document.head.appendChild(styleEl);
+
+  // Place markers at stored/default positions
+  Object.entries(VESSEL_MMSI).forEach(([name, data]) => {
+    const color = vesselColors[name] || '#6b7280';
+    const icon = buildVesselIcon(color, !!data.mmsi, false, null);
+
+    const marker = L.marker([data.lat, data.lng], { icon })
+      .bindPopup(buildPopupHTML(name, data.mmsi, color, null), { maxWidth: 300 })
+      .addTo(fleetMap);
+
+    marker.bindTooltip(name, {
+      permanent: true, direction: 'top', offset: [0, -22],
+      className: 'vessel-label-tooltip'
+    });
+
+    marker.on('click', function() { selectVesselTab(name); });
+    fleetMarkers[name] = marker;
+  });
+
+  // Start AISStream WebSocket
+  initAISStream();
+}
+
+// ── AISStream.io WEBSOCKET ────────────────────────────────────────────────────
+function initAISStream() {
+  if (aisSocket && (aisSocket.readyState === WebSocket.CONNECTING || aisSocket.readyState === WebSocket.OPEN)) return;
+
+  clearTimeout(aisReconnectTimer);
+  setAISStatus('connecting');
+
+  try {
+    aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  } catch(e) {
+    console.error('AISStream WebSocket failed to open:', e);
+    setAISStatus('error');
+    scheduleAISReconnect();
+    return;
+  }
+
+  aisSocket.onopen = function() {
+    console.log('[AISStream] Connected — subscribing to fleet MMSIs');
+    setAISStatus('connecting');
+
+    // Build MMSI list (integers)
+    const mmsiList = Object.values(VESSEL_MMSI)
+      .filter(d => d.mmsi)
+      .map(d => parseInt(d.mmsi, 10));
+
+    const subscribeMsg = {
+      APIKey: AISSTREAM_KEY,
+      BoundingBoxes: [[[-90, -180], [90, 180]]],  // global — filtered by MMSI list
+      FilterMessageTypes: ['PositionReport'],
+      FiltersShipMMSI: mmsiList.map(String)
+    };
+
+    aisSocket.send(JSON.stringify(subscribeMsg));
+  };
+
+  aisSocket.onmessage = function(event) {
+    try {
+      const msg = JSON.parse(event.data);
+      handleAISMessage(msg);
+    } catch(e) {
+      console.warn('[AISStream] Parse error:', e);
+    }
+  };
+
+  aisSocket.onerror = function(e) {
+    console.error('[AISStream] WebSocket error:', e);
+    setAISStatus('error');
+  };
+
+  aisSocket.onclose = function(e) {
+    console.warn('[AISStream] Connection closed (code ' + e.code + '). Reconnecting…');
+    setAISStatus('reconnecting');
+    scheduleAISReconnect();
+  };
+}
+
+function scheduleAISReconnect() {
+  clearTimeout(aisReconnectTimer);
+  aisReconnectTimer = setTimeout(function() {
+    console.log('[AISStream] Attempting reconnect…');
+    initAISStream();
+  }, 8000);  // retry in 8s
+}
+
+// ── HANDLE AIS MESSAGE ────────────────────────────────────────────────────────
+function handleAISMessage(msg) {
+  // First message is typically a confirmation/metadata
+  if (msg.MessageType === 'ConnectionStatus' || !msg.MessageType) {
+    // ConnectionStatus or welcome message — mark as live
+    setAISStatus('live');
+    return;
+  }
+
+  if (msg.MessageType !== 'PositionReport') return;
+
+  const pr  = msg.Message && msg.Message.PositionReport;
+  const meta = msg.MetaData;
+  if (!pr || !meta) return;
+
+  setAISStatus('live');  // got data → definitely live
+
+  const mmsiStr = String(meta.MMSI || pr.UserID || '');
+  const name    = MMSI_TO_NAME[mmsiStr];
+  if (!name) return;  // not one of our fleet
+
+  const lat = pr.Latitude;
+  const lng = pr.Longitude;
+  const sog = pr.Sog  || 0;
+  const cog = pr.Cog  || 0;
+  const hdg = pr.TrueHeading !== undefined ? pr.TrueHeading : 511;
+  const navStatus = pr.NavigationalStatus !== undefined ? pr.NavigationalStatus : 15;
+
+  // Sanity-check coordinates
+  if (lat === 0 && lng === 0) return;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+
+  const now   = new Date();
+  const timeStr = now.toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // Store live data
+  aisLiveData[mmsiStr] = { lat, lng, sog, cog, hdg, navStatus, time: timeStr, name };
+
+  // Update marker position
+  const marker = fleetMarkers[name];
+  if (!marker) return;
+
+  const color = vesselColors[name] || '#6b7280';
+  marker.setLatLng([lat, lng]);
+
+  // Update icon to directional arrow
+  const newIcon = buildVesselIcon(color, true, true, cog);
+  marker.setIcon(newIcon);
+
+  // Update tooltip class to show it's live
+  try {
+    const tooltipEl = marker.getTooltip && marker.getTooltip() && marker.getTooltip().getElement();
+    if (tooltipEl) tooltipEl.classList.add('live-label');
+  } catch(e) {}
+
+  // Refresh popup if it's open
+  const popup = marker.getPopup();
+  if (popup && marker.isPopupOpen()) {
+    popup.setContent(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]));
+  } else {
+    marker.bindPopup(buildPopupHTML(name, mmsiStr, color, aisLiveData[mmsiStr]), { maxWidth: 300 });
+  }
+
+  // Update stored position for tab navigation
+  VESSEL_MMSI[name].lat = lat;
+  VESSEL_MMSI[name].lng = lng;
+
+  // If this vessel's tab is active, update live bar
+  if (activeTab === name) {
+    updateAISLiveBar(name, aisLiveData[mmsiStr]);
+  }
+
+  console.log('[AISStream] ' + name + ' → ' + lat.toFixed(4) + ', ' + lng.toFixed(4) + ' | SOG ' + sog + ' kn | COG ' + cog + '°');
+}
+
+// ── LIVE BAR (below map) ──────────────────────────────────────────────────────
+function updateAISLiveBar(name, pos) {
+  const bar = document.getElementById('aisLiveBar');
+  if (!bar) return;
+  if (!pos) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  document.getElementById('aisBarVessel').textContent = name;
+  document.getElementById('aisBarLat').textContent    = pos.lat.toFixed(5) + '°';
+  document.getElementById('aisBarLon').textContent    = pos.lng.toFixed(5) + '°';
+  document.getElementById('aisBarSog').textContent    = pos.sog.toFixed(1);
+  document.getElementById('aisBarCog').textContent    = pos.cog.toFixed(1);
+  document.getElementById('aisBarHdg').textContent    = pos.hdg === 511 ? '—' : pos.hdg;
+  document.getElementById('aisBarNav').textContent    = AIS_NAV_STATUS[pos.navStatus] || '—';
+  document.getElementById('aisBarTime').textContent   = 'Last fix: ' + pos.time;
+}
+
+// ── MAP INFO BAR ──────────────────────────────────────────────────────────────
 function getTrackingLinks(name, mmsi) {
   if (!mmsi) return '';
   const vf  = "https://www.vesselfinder.com/vessels/details/" + mmsi;
@@ -1123,101 +1482,6 @@ function getTrackingLinks(name, mmsi) {
   );
 }
 
-function buildPopupHTML(name, mmsi, color) {
-  const vf  = mmsi ? "https://www.vesselfinder.com/vessels/details/" + mmsi : null;
-  const mt  = mmsi ? "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + mmsi : null;
-  const mst = mmsi ? "https://www.myshiptracking.com/?mmsi=" + mmsi : null;
-  return (
-    '<div>' +
-    '<div class="vessel-popup-name" style="color:' + color + '">' + name + '</div>' +
-    '<div class="vessel-popup-mmsi">' + (mmsi ? 'MMSI: ' + mmsi : 'MMSI not assigned') + '</div>' +
-    (mmsi ? (
-      '<div class="vessel-popup-links">' +
-      '<a href="' + vf  + '" target="_blank" class="vessel-popup-link">📡 VesselFinder</a>' +
-      '<a href="' + mt  + '" target="_blank" class="vessel-popup-link">🗺 MarineTraffic</a>' +
-      '<a href="' + mst + '" target="_blank" class="vessel-popup-link">🛰 MyShipTracking</a>' +
-      '</div>'
-    ) : '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">Add MMSI to enable live tracking</div>') +
-    '</div>'
-  );
-}
-
-function initFleetMap() {
-  if (fleetMap) return;
-
-  fleetMap = L.map('fleet-map', {
-    center: [24.5, 55.5],
-    zoom: 6,
-    zoomControl: true,
-    attributionControl: true
-  });
-
-  // Clean maritime-style tile layer
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> | AIS links: VesselFinder / MarineTraffic',
-    subdomains: 'abcd', maxZoom: 18
-  }).addTo(fleetMap);
-
-  // Add markers for each vessel
-  Object.entries(VESSEL_MMSI).forEach(([name, data]) => {
-    const color = vesselColors[name] || '#6b7280';
-    const hasMMSI = !!data.mmsi;
-
-    // Custom SVG ship icon
-    const svgIcon = L.divIcon({
-      className: '',
-      html: (
-        '<div style="position:relative;width:36px;height:36px;">' +
-        '<div style="' +
-          'width:36px;height:36px;border-radius:50%;' +
-          'background:' + color + ';' +
-          'border:3px solid #fff;' +
-          'box-shadow:0 2px 10px rgba(0,0,0,0.25);' +
-          'display:flex;align-items:center;justify-content:center;' +
-          'font-size:16px;' +
-          (hasMMSI ? '' : 'opacity:0.55;') +
-        '">⛴</div>' +
-        '<div style="' +
-          'position:absolute;top:-6px;right:-6px;' +
-          'width:12px;height:12px;border-radius:50%;' +
-          'background:' + (hasMMSI ? '#009e84' : '#94a3b8') + ';' +
-          'border:2px solid #fff;' +
-          (hasMMSI ? 'animation:vf-pulse 2s infinite;' : '') +
-        '"></div>' +
-        '</div>'
-      ),
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -20]
-    });
-
-    const marker = L.marker([data.lat, data.lng], { icon: svgIcon })
-      .bindPopup(buildPopupHTML(name, data.mmsi, color), { maxWidth: 280 })
-      .addTo(fleetMap);
-
-    // Vessel name label
-    marker.bindTooltip(name, {
-      permanent: true, direction: 'top', offset: [0, -22],
-      className: 'vessel-label-tooltip'
-    });
-
-    marker.on('click', function() { selectVesselTab(name); });
-    fleetMarkers[name] = marker;
-  });
-
-  // Add pulse animation style once
-  const styleEl = document.createElement('style');
-  styleEl.textContent = (
-    '@keyframes vf-pulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.4);opacity:0.6;} }' +
-    '.vessel-label-tooltip { background:rgba(255,255,255,0.92)!important; border:1px solid #e2e8f0!important; ' +
-    'font-family:"DM Mono",monospace!important; font-size:10px!important; font-weight:500!important; ' +
-    'color:#0f172a!important; padding:2px 7px!important; border-radius:20px!important; ' +
-    'box-shadow:0 2px 8px rgba(0,0,0,0.12)!important; white-space:nowrap!important; }' +
-    '.vessel-label-tooltip::before { display:none!important; }'
-  );
-  document.head.appendChild(styleEl);
-}
-
 function updateMapInfoBar(name, mmsi) {
   const bar = document.getElementById('mapInfoBar');
   if (!bar) return;
@@ -1225,8 +1489,9 @@ function updateMapInfoBar(name, mmsi) {
     bar.innerHTML = (
       '<span class="mvi-label">Showing</span><span class="mvi-val">All Fleet Vessels — Gulf Region</span>' +
       '<div class="mvi-sep"></div>' +
-      '<span class="mvi-label">Click any vessel marker for live tracking links</span>'
+      '<span class="mvi-label">Click any vessel marker for live AIS data</span>'
     );
+    document.getElementById('aisLiveBar').style.display = 'none';
     return;
   }
   const infoHTML = (
@@ -1236,8 +1501,13 @@ function updateMapInfoBar(name, mmsi) {
     (mmsi ? getTrackingLinks(name, mmsi) : '<span style="color:var(--text3);font-size:9px;margin-left:8px;">No MMSI — tracking unavailable</span>')
   );
   bar.innerHTML = infoHTML;
+
+  // Show live bar if we have data for this vessel
+  const live = mmsi ? aisLiveData[mmsi] : null;
+  updateAISLiveBar(name, live);
 }
 
+// ── TAB NAVIGATION ────────────────────────────────────────────────────────────
 function selectVesselTab(key) {
   activeTab = key;
   document.querySelectorAll('.vessel-tab').forEach(t => t.classList.remove('active'));
@@ -1293,7 +1563,7 @@ function addAISBadgesToCards() {
     badge.href = 'https://www.vesselfinder.com/vessels/details/' + data.mmsi;
     badge.target = '_blank';
     badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-family:"DM Mono",monospace;font-size:9px;letter-spacing:0.5px;color:var(--accent);background:rgba(0,158,132,0.08);border:1px solid rgba(0,158,132,0.2);text-decoration:none;white-space:nowrap;';
-    badge.innerHTML = '📡 AIS';
+    badge.innerHTML = '📡 Live AIS';
     badge.onclick = function(e) { e.stopPropagation(); };
     footer.appendChild(badge);
   });

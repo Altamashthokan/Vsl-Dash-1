@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BSM & HSE Fleet Operations Dashboard — Live</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f0f4f8;
+    --bg2: #ffffff;
+    --bg3: #e8edf3;
+    --card: #ffffff;
+    --border: #d0dae6;
+    --accent: #009e84;
+    --accent2: #0284c7;
+    --accent3: #d97706;
+    --accent4: #dc2626;
+    --text: #0f172a;
+    --text2: #475569;
+    --text3: #94a3b8;
+    --anchor: #0284c7;
+    --sailed: #059669;
+    --loading: #d97706;
+    --discharging: #7c3aed;
+    --maintenance: #dc2626;
+    --idle: #6b7280;
+    --underway: #009e84;
+    --berthed: #2563eb;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,158,132,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,158,132,0.06) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper { position: relative; z-index: 1; }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%);
+    box-shadow: 0 1px 12px rgba(0,0,0,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .logo { display: flex; align-items: center; gap: 14px; }
+
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 14px rgba(0,158,132,0.25);
+  }
+
+  .logo-text h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px; letter-spacing: 2px; color: var(--text); line-height: 1;
+  }
+  .logo-text span {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px; color: var(--accent); letter-spacing: 3px; text-transform: uppercase;
+  }
+
+  .header-meta { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+
+  .live-badge {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent); letter-spacing: 1px;
+  }
+
+  .live-dot {
+    width: 8px; height: 8px;
+    background: var(--accent); border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+    box-shadow: 0 0 8px rgba(0,158,132,0.5);
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .date-display {
+    font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); letter-spacing: 1px;
+  }
+
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg2); color: var(--text2);
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,158,132,0.06); }
+  .refresh-btn.spinning .btn-icon { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* LOADING / ERROR STATES */
+  .data-state {
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px; gap: 12px;
+    font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text3);
+    letter-spacing: 1px;
+  }
+  .data-state.error { color: var(--accent4); }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+
+  /* LAST UPDATED BANNER */
+  .last-fetch-bar {
+    padding: 6px 32px;
+    background: rgba(0,158,132,0.06);
+    border-bottom: 1px solid rgba(0,158,132,0.12);
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--accent); letter-spacing: 1px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* SUMMARY STATS */
+  .summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat-cell {
+    background: var(--bg2); padding: 18px 24px;
+    display: flex; align-items: center; gap: 14px;
+    transition: background 0.2s;
+  }
+  .stat-cell:hover { background: var(--bg3); }
+
+  .stat-icon { font-size: 24px; opacity: 0.9; }
+  .stat-label {
+    font-size: 10px; color: var(--text3); letter-spacing: 2px;
+    text-transform: uppercase; font-family: 'DM Mono', monospace; margin-bottom: 3px;
+  }
+  .stat-value {
+    font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 1px; line-height: 1;
+  }
+  .stat-value.green { color: var(--accent); }
+  .stat-value.blue { color: var(--accent2); }
+  .stat-value.amber { color: var(--accent3); }
+  .stat-value.white { color: var(--text); }
+
+  /* MAIN */
+  .main { padding: 28px 32px; max-width: 1600px; margin: 0 auto; }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif; font-size: 13px;
+    letter-spacing: 4px; color: var(--text3); text-transform: uppercase;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* VESSEL CARDS */
+  .vessel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px; margin-bottom: 36px;
+  }
+
+  .vessel-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    cursor: pointer;
+  }
+  .vessel-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.1); }
+  .vessel-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 8px 30px rgba(0,158,132,0.12); }
+
+  .card-top-bar { height: 3px; width: 100%; }
+
+  .card-header {
+    padding: 16px 20px 12px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vessel-name { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 1.5px; line-height: 1.1; color: var(--text); }
+  .vessel-type { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); letter-spacing: 1px; margin-top: 2px; }
+
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 20px;
+    font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 1px;
+    font-weight: 500; white-space: nowrap;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  .s-anchor { background: rgba(2,132,199,0.1); color: #0369a1; border: 1px solid rgba(2,132,199,0.2); }
+  .s-anchor .status-dot { background: #0284c7; }
+  .s-sailed { background: rgba(5,150,105,0.1); color: #047857; border: 1px solid rgba(5,150,105,0.2); }
+  .s-sailed .status-dot { background: #059669; }
+  .s-loading { background: rgba(217,119,6,0.1); color: #b45309; border: 1px solid rgba(217,119,6,0.2); }
+  .s-loading .status-dot { background: #d97706; animation: blink 1.5s infinite; }
+  .s-discharging { background: rgba(124,58,237,0.1); color: #6d28d9; border: 1px solid rgba(124,58,237,0.2); }
+  .s-discharging .status-dot { background: #7c3aed; animation: blink 1.5s infinite; }
+  .s-maintenance { background: rgba(220,38,38,0.1); color: #b91c1c; border: 1px solid rgba(220,38,38,0.2); }
+  .s-maintenance .status-dot { background: #dc2626; }
+  .s-idle { background: rgba(107,114,128,0.1); color: #4b5563; border: 1px solid rgba(107,114,128,0.2); }
+  .s-idle .status-dot { background: #6b7280; }
+  .s-underway { background: rgba(0,158,132,0.1); color: #007a65; border: 1px solid rgba(0,158,132,0.2); }
+  .s-underway .status-dot { background: #009e84; animation: blink 1s infinite; }
+  .s-berthed { background: rgba(37,99,235,0.1); color: #1d4ed8; border: 1px solid rgba(37,99,235,0.2); }
+  .s-berthed .status-dot { background: #2563eb; }
+  .s-surveyor { background: rgba(234,88,12,0.1); color: #c2410c; border: 1px solid rgba(234,88,12,0.2); }
+  .s-surveyor .status-dot { background: #ea580c; }
+  .s-drydock { background: rgba(220,38,38,0.1); color: #b91c1c; border: 1px solid rgba(220,38,38,0.2); }
+  .s-drydock .status-dot { background: #dc2626; }
+
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .card-body {
+    padding: 16px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .metric { display: flex; flex-direction: column; gap: 4px; }
+  .metric-label { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 2px; color: var(--text3); text-transform: uppercase; }
+  .metric-value { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 1px; line-height: 1; }
+  .metric-unit { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text2); margin-top: 1px; }
+  .metric-value.cargo-val { color: var(--accent3); }
+  .metric-value.bunker-val { color: var(--accent2); }
+  .metric-value.zero { color: var(--text3); }
+  .metric-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .metric-bar-fill { height: 100%; border-radius: 2px; transition: width 1s ease; }
+  .cargo-bar { background: linear-gradient(90deg, var(--accent3), #fcd34d); }
+  .bunker-bar { background: linear-gradient(90deg, var(--accent2), #38bdf8); }
+
+  .card-eta { padding: 6px 20px; background: rgba(0,158,132,0.05); border-top: 1px solid rgba(0,158,132,0.1); }
+  .eta-badge { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--accent); letter-spacing: 0.5px; }
+
+  .card-footer {
+    padding: 10px 20px 14px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .port-icon { font-size: 12px; color: var(--text3); }
+  .port-name { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); flex: 1; }
+  .last-update { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text3); letter-spacing: 1px; }
+
+  /* ACTIVITY LOG */
+  .activity-section { margin-bottom: 32px; }
+  .log-table-wrapper { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+
+  .log-filter-bar {
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 8px; flex-wrap: wrap; background: var(--bg2); align-items: center;
+  }
+  .filter-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); letter-spacing: 1px; margin-right: 4px; }
+  .filter-btn {
+    padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--text2);
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    cursor: pointer; transition: all 0.15s; letter-spacing: 0.5px;
+  }
+  .filter-btn:hover, .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,201,167,0.08); }
+
+  .log-scroll { max-height: 480px; overflow-y: auto; }
+  .log-table { width: 100%; border-collapse: collapse; }
+  .log-table th {
+    padding: 10px 16px; font-family: 'DM Mono', monospace; font-size: 9px;
+    letter-spacing: 2px; color: var(--text3); text-transform: uppercase;
+    text-align: left; border-bottom: 1px solid var(--border); background: var(--bg2); font-weight: 400;
+    position: sticky; top: 0; z-index: 2;
+  }
+  .log-table td {
+    padding: 10px 16px; font-size: 12px; color: var(--text2);
+    border-bottom: 1px solid rgba(208,218,230,0.7); vertical-align: middle;
+  }
+  .log-table tr:last-child td { border-bottom: none; }
+  .log-table tr:hover td { background: rgba(0,0,0,0.025); color: var(--text); }
+
+  .vessel-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.5px;
+  }
+  .qty-in { color: var(--accent); font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 0.5px; }
+  .qty-out { color: var(--discharging); font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 0.5px; }
+  .qty-zero { color: var(--text3); font-size: 11px; }
+  .amount-cell { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent2); font-weight: 500; }
+  .amount-cell.amount-zero { color: var(--text3); }
+  .particular-text { font-size: 11px; color: var(--text2); max-width: 200px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .voucher-type { display: inline-block; padding: 2px 8px; border-radius: 4px; font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.5px; }
+  .cargo-voucher { background: rgba(217,119,6,0.1); color: #b45309; border: 1px solid rgba(217,119,6,0.15); }
+  .bunker-voucher { background: rgba(2,132,199,0.1); color: #0369a1; border: 1px solid rgba(2,132,199,0.15); }
+  .crew-voucher { background: rgba(5,150,105,0.1); color: #047857; border: 1px solid rgba(5,150,105,0.15); }
+  .service-voucher { background: rgba(107,114,128,0.1); color: #4b5563; border: 1px solid rgba(107,114,128,0.15); }
+  .product-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--bg3); color: var(--text2); font-family: 'DM Mono', monospace; font-size: 9px; border: 1px solid var(--border); }
+
+  /* LIVE TRACKING SECTION */
+  .tracking-section { margin-bottom: 36px; }
+
+  .tracking-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) {
+    .tracking-layout { grid-template-columns: 1fr; }
+  }
+
+  .map-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+
+  .map-card-header {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(135deg, rgba(0,158,132,0.04), rgba(2,132,199,0.04));
+  }
+
+  .map-card-title {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    letter-spacing: 2px; color: var(--text2); text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .map-live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); animation: pulse-dot 2s infinite;
+    box-shadow: 0 0 6px rgba(0,158,132,0.5);
+  }
+
+  .map-open-link {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    color: var(--accent2); text-decoration: none; letter-spacing: 0.5px;
+    padding: 4px 10px; border-radius: 20px;
+    border: 1px solid rgba(2,132,199,0.25);
+    transition: all 0.2s;
+  }
+  .map-open-link:hover { background: rgba(2,132,199,0.08); border-color: var(--accent2); }
+
+  .map-embed-wrapper {
+    position: relative; width: 100%; height: 460px;
+    background: #1a2635;
+  }
+
+  .map-embed-wrapper iframe {
+    width: 100%; height: 100%; border: none; display: block;
+  }
+
+  /* VESSEL TRACKING CARDS PANEL */
+  .tracking-panel {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+
+  .tracking-panel-header {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    letter-spacing: 2px; color: var(--text3); text-transform: uppercase;
+    padding: 0 4px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .tracking-vessel-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .tracking-vessel-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,158,132,0.1); }
+
+  .tvc-bar { height: 2px; width: 100%; }
+
+  .tvc-body {
+    padding: 10px 14px 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+
+  .tvc-top {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .tvc-name {
+    font-family: 'Bebas Neue', sans-serif; font-size: 17px;
+    letter-spacing: 1px; color: var(--text);
+  }
+
+  .tvc-mmsi {
+    font-family: 'DM Mono', monospace; font-size: 9px;
+    color: var(--text3); letter-spacing: 1px;
+  }
+
+  .tvc-actions {
+    display: flex; gap: 6px;
+  }
+
+  .tvc-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 20px;
+    font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.5px;
+    text-decoration: none; cursor: pointer; border: none;
+    transition: all 0.2s; white-space: nowrap;
+  }
+
+  .tvc-btn-track {
+    background: rgba(0,158,132,0.1); color: var(--accent);
+    border: 1px solid rgba(0,158,132,0.25);
+  }
+  .tvc-btn-track:hover { background: rgba(0,158,132,0.18); }
+
+  .tvc-btn-info {
+    background: rgba(2,132,199,0.1); color: var(--accent2);
+    border: 1px solid rgba(2,132,199,0.25);
+  }
+  .tvc-btn-info:hover { background: rgba(2,132,199,0.18); }
+
+  .tvc-no-mmsi {
+    font-family: 'DM Mono', monospace; font-size: 9px;
+    color: var(--text3); letter-spacing: 0.5px;
+    padding: 5px 0;
+  }
+
+  /* FOOTER */
+  footer {
+    margin-top: 40px; padding: 24px 32px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    background: var(--bg2);
+  }
+  .footer-left { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); letter-spacing: 1px; }
+  .footer-right { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--text3); }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .summary-strip { grid-template-columns: repeat(2, 1fr); }
+    .main { padding: 20px 16px; }
+    header { padding: 16px; }
+  }
+  @media (max-width: 480px) {
+    .summary-strip { grid-template-columns: 1fr 1fr; }
+    .vessel-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⛴</div>
+      <div class="logo-text">
+        <h1>BSM & HSE Fleet Operations</h1>
+        <span>Live Dashboard</span>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        LIVE · Google Sheets
+      </div>
+      <div class="date-display" id="currentDate"></div>
+      <button class="refresh-btn" id="refreshBtn" onclick="fetchAndRender()">
+        <span class="btn-icon">↻</span>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- LAST FETCH BAR -->
+  <div class="last-fetch-bar" id="lastFetchBar" style="display:none">
+    ✓ &nbsp;Data fetched from Google Sheets · Last updated: <span id="lastFetchTime"></span>
+  </div>
+
+  <!-- SUMMARY STRIP -->
+  <div class="summary-strip">
+    <div class="stat-cell">
+      <div class="stat-icon">🛳</div>
+      <div>
+        <div class="stat-label">Total Vessels</div>
+        <div class="stat-value white" id="totalVessels">—</div>
+      </div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-icon">⚡</div>
+      <div>
+        <div class="stat-label">Active Ops</div>
+        <div class="stat-value green" id="activeOps">—</div>
+      </div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-icon">📦</div>
+      <div>
+        <div class="stat-label">Total Qty In (MT)</div>
+        <div class="stat-value amber" id="totalQtyIn">—</div>
+      </div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-icon">💰</div>
+      <div>
+        <div class="stat-label">Total Cargo Value (AED)</div>
+        <div class="stat-value blue" id="totalAmount">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- VESSEL CARDS -->
+    <div class="section-title">⛵ Fleet Status</div>
+    <div id="vesselLoadState" class="data-state">
+      <div class="spinner"></div> Loading vessel data from Google Sheets…
+    </div>
+    <div class="vessel-grid" id="vesselGrid"></div>
+
+    <!-- LIVE VESSEL TRACKING -->
+    <div class="tracking-section">
+      <div class="section-title">🛰 Live Vessel Tracking · MarineTraffic AIS</div>
+      <div class="tracking-layout">
+
+        <!-- MAP EMBED -->
+        <div class="map-card">
+          <div class="map-card-header">
+            <div class="map-card-title">
+              <div class="map-live-dot"></div>
+              AIS Live Positions — Gulf Region
+            </div>
+            <a href="https://www.marinetraffic.com/en/ais/home/centerx:55.0/centery:25.0/zoom:7" target="_blank" class="map-open-link">↗ Open Full Map</a>
+          </div>
+          <div class="map-embed-wrapper">
+            <iframe
+              src="https://www.marinetraffic.com/en/ais/embed/maptype:0/mmsi:649081582,306708000,678000441,341368002,306295000/zoom:6/centerx:55.5/centery:24.5/width:100/height:460/shownames:true/showspeed:true"
+              allowfullscreen
+              loading="lazy"
+              title="BSM & HSE Fleet Live AIS Tracking"
+            ></iframe>
+          </div>
+        </div>
+
+        <!-- VESSEL TRACKING PANEL -->
+        <div class="tracking-panel">
+          <div class="tracking-panel-header">
+            <span>Fleet Vessels</span>
+            <span id="trackedCount" style="color:var(--accent)">5 tracked</span>
+          </div>
+          <div id="trackingCards"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ACTIVITY LOG -->
+    <div class="activity-section">
+      <div class="section-title">📋 Activity Log</div>
+      <div class="log-table-wrapper">
+        <div class="log-filter-bar" id="filterBar">
+          <span class="filter-label">FILTER:</span>
+          <button class="filter-btn active" onclick="filterLog('all', this)">All Vessels</button>
+        </div>
+        <div id="logLoadState" class="data-state">
+          <div class="spinner"></div> Loading activity log…
+        </div>
+        <div class="log-scroll" id="logScroll" style="display:none">
+          <table class="log-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Vessel</th>
+                <th>Status</th>
+                <th>Voucher</th>
+                <th>Product</th>
+                <th>Qty In</th>
+                <th>Qty Out</th>
+                <th>Amount (AED)</th>
+                <th>Particular</th>
+              </tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-left">FLEET OPERATIONS DASHBOARD · POWERED BY GOOGLE SHEETS · AUTO-REFRESH EVERY 5 MIN</div>
+    <div class="footer-right" id="footerRefresh"></div>
+  </footer>
+
+</div>
+
+<script>
+// ===================== CONFIG =====================
+// PRIMARY source — Google Apps Script Web App (instant, no cache, no CORS issues)
+// See SETUP_GUIDE.md for 2-minute setup. Paste your deployed URL below:
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbysDph_xO3Pb3Sp2FJN6XrkZjU2IRhXyTGqvSemqU4CoNa9trbClT31Plr8gPrwubhpiA/exec'; // <-- paste your script URL here after setup
+
+// FALLBACK — published CSV (Google caches this up to 5 min)
+const CSV_BASE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRoLfXG-Gdo8bs9BSYecpaM1SkFkWIYWXnP0o9EixA-8FF4Jc8qzQypFnVWlNl0vTVGmnnnWU8IIqUr/pub?output=csv';
+
+// Cache-bust: unique timestamp per request so proxies never serve stale data
+const addCacheBust = url => url + '&_t=' + Date.now() + '&_r=' + Math.random().toString(36).slice(2);
+
+// CORS proxy fallback chain — tries each in order
+const PROXY_CHAIN = [
+  url => 'https://corsproxy.io/?' + encodeURIComponent(url),
+  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+  url => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
+  url => 'https://corsproxy.org/?' + encodeURIComponent(url),
+];
+
+const VESSEL_CAPACITIES = {
+  "Hazi 1": 1050,
+  "Reyukaisen Karou": 800,
+  "Arabian Energy": 8000,
+  "Al Tarf": 2000,
+  "Glory 1": 3700,
+  "DIB": 1500,
+  "Sea Force": 1600,
+};
+
+const vesselColors = {
+  "Hazi 1": "#0ea5e9",
+  "Reyukaisen Karou": "#f59e0b",
+  "Arabian Energy": "#10b981",
+  "Al Tarf": "#00c9a7",
+  "Glory 1": "#8b5cf6",
+  "DIB": "#fb923c",
+  "Sea Force": "#ef4444",
+};
+
+const statusConfig = {
+  "At Anchor": { cls: "s-anchor", icon: "⚓" },
+  "Sailed Out": { cls: "s-sailed", icon: "🌊" },
+  "Loading in Progress": { cls: "s-loading", icon: "📥" },
+  "Discharging in Progress": { cls: "s-discharging", icon: "📤" },
+  "Under Maintenance": { cls: "s-maintenance", icon: "🔧" },
+  "Idle at Position": { cls: "s-idle", icon: "⏸" },
+  "Idle at Position / Waiting for Instructions": { cls: "s-idle", icon: "⏸" },
+  "Underway": { cls: "s-underway", icon: "🧭" },
+  "On the Way to Next Position / Port": { cls: "s-underway", icon: "🧭" },
+  "Berthed": { cls: "s-berthed", icon: "🏗" },
+  "Surveyour On Board": { cls: "s-surveyor", icon: "📋" },
+  "Surveyor On Board": { cls: "s-surveyor", icon: "📋" },
+  "Under Dry Dock": { cls: "s-drydock", icon: "🏚" },
+};
+
+// ===================== CSV PARSER =====================
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length === 0) return [];
+  const headers = parseCSVRow(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const values = parseCSVRow(lines[i]);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = (values[idx] || '').trim(); });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function parseCSVRow(row) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < row.length; i++) {
+    const ch = row[i];
+    if (ch === '"') {
+      if (inQuotes && row[i+1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ===================== DATA PROCESSING =====================
+let allRows = [];
+let currentFilter = 'all';
+
+// Google Sheets CSV published output uses the ACTUAL sheet data starting from row 1.
+// The Updates sheet has 11 blank rows then headers at row 12.
+// When published as CSV the blank rows come through as empty lines — we need to find
+// the real header row by looking for a row that contains "Vessel".
+function parseCSVSmart(text) {
+  const lines = text.trim().split('\n');
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const row = parseCSVRow(lines[i]);
+    // Look for the header row — must contain "Vessel" and "Status"
+    const joined = row.join('|').toLowerCase();
+    if (joined.includes('vessel') && joined.includes('status')) {
+      headerIdx = i;
+      break;
+    }
+  }
+  if (headerIdx === -1) {
+    // Fallback: treat first non-empty row as header
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim()) { headerIdx = i; break; }
+    }
+  }
+  if (headerIdx === -1) return [];
+
+  const headers = parseCSVRow(lines[headerIdx]);
+  const rows = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const values = parseCSVRow(lines[i]);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = (values[idx] || '').trim(); });
+    // Skip rows that are clearly not data (e.g. sub-header repetitions)
+    if (obj['Vessel'] && obj['Vessel'].toLowerCase() === 'vessel') continue;
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function processRows(rows) {
+  return rows.filter(r => {
+    const vessel = (r['Vessel'] || '').trim();
+    return vessel && vessel !== 'Vessel' && vessel !== 'Sr.No' && !/^nan$/i.test(vessel);
+  });
+}
+
+// Derive vessel summary from activity log
+function deriveVesselData(rows) {
+  const vessels = {};
+  // Process rows in order (latest entry wins for status/port)
+  rows.forEach(r => {
+    const name = (r['Vessel'] || '').trim();
+    if (!name) return;
+    if (!vessels[name]) {
+      vessels[name] = {
+        name,
+        status: '',
+        port: '—',
+        cargoOnBoard: 0,   // net cargo currently on board
+        bunkerSelfUsed: 0, // total bunker taken for self-consumption
+        bunkerGiven: 0,    // total bunker given to other vessels
+        bunkerReceived: 0, // bunker received from other vessels
+        cargoProduct: '—',
+        lastUpdate: '',
+        eta: '',
+        capacity: VESSEL_CAPACITIES[name] || 2000,
+      };
+    }
+    const v = vessels[name];
+    const status = (r['Status'] || '').trim();
+    const port = (r['Port'] || '').trim();
+    const product = (r['Product'] || '').trim();
+    const qtyIn = parseFloat(r['Qty In']) || 0;
+    const qtyOut = parseFloat(r['Qty Out']) || 0;
+    const voucher = (r['Voucher Type'] || '').trim().toLowerCase();
+    const particular = (r['Particular'] || '').trim();
+    const date = (r['Date'] || '').trim();
+    const time = (r['Time'] || '').trim();
+
+    // Always update status and port to latest
+    if (status) v.status = status;
+    if (port) v.port = port;
+    if (product && product !== '—' && !product.match(/^(nan|NaN)$/)) v.cargoProduct = product;
+    if (date) v.lastUpdate = formatDate(date) + (time ? ' · ' + formatTime(time) : '');
+
+    // ── CARGO LOADING ──────────────────────────────────────────
+    // Voucher = "Cargo Loading", Qty In > 0  →  add to on-board
+    if (voucher.includes('cargo loading') && qtyIn > 0) {
+      v.cargoOnBoard += qtyIn;
+    }
+
+    // ── CARGO DISCHARGED ───────────────────────────────────────
+    // Voucher = "Cargo Discharged", Qty Out > 0  →  deduct from on-board
+    // Covers both: sale/delivery AND bunker supply to other ships
+    if (voucher.includes('cargo discharged') && qtyOut > 0) {
+      v.cargoOnBoard -= qtyOut;
+      // If particular mentions "bunker to" another vessel, track separately
+      if (/bunker.*(to|given|supply)/i.test(particular) || /given to/i.test(particular)) {
+        v.bunkerGiven += qtyOut;
+      }
+    }
+
+    // ── BUNKER VOUCHER ─────────────────────────────────────────
+    // Voucher = "Bunker" (not Cargo Loading/Discharged)
+    if (voucher === 'bunker') {
+
+      // Qty Out → vessel consumed its own on-board cargo as bunker (self-use)
+      // e.g. "Bunker Taken from deck side to Main Tank", "Self Bunker 1320 IG"
+      if (qtyOut > 0) {
+        v.cargoOnBoard  -= qtyOut;  // ← THIS IS THE FIX: deduct from cargo
+        v.bunkerSelfUsed += qtyOut;
+      }
+
+      // Qty In → vessel received bunker from another vessel
+      // e.g. "Bunker From Reyukaisen Karuo"
+      if (qtyIn > 0) {
+        v.cargoOnBoard   += qtyIn;  // adds to on-board (received product)
+        v.bunkerReceived += qtyIn;
+      }
+    }
+
+    // ETA from particular
+    const etaMatch = (r['Particular'] || '').match(/eta[:\s]+([^\n,]+)/i);
+    if (etaMatch) v.eta = etaMatch[1].trim();
+  });
+
+  // Clamp cargo to 0 (can't be negative)
+  Object.values(vessels).forEach(v => {
+    if (v.cargoOnBoard < 0) v.cargoOnBoard = 0;
+  });
+
+  return Object.values(vessels);
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  // Handle ISO date
+  const m = d.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${parseInt(m[3])} ${months[parseInt(m[2])-1]}`;
+  }
+  return d;
+}
+
+function formatTime(t) {
+  if (!t) return '';
+  const m = t.match(/(\d{1,2}):(\d{2})/);
+  if (m) return `${m[1]}:${m[2]}`;
+  return t;
+}
+
+function getStatusConfig(status) {
+  return statusConfig[status] || { cls: "s-idle", icon: "⚓" };
+}
+
+function getVesselColor(name) {
+  return vesselColors[name] || "#6b7280";
+}
+
+function isCargoProduct(p) {
+  if (!p || p === '—') return false;
+  const cargoProducts = ['gas oil', 'fuel oil', 'vlsfo', 'bitumen', 'naptha', 'kerosene', 'crude', 'lsfo', 'hsfo'];
+  return cargoProducts.some(cp => p.toLowerCase().includes(cp));
+}
+
+function getVoucherClass(v) {
+  if (!v) return 'service-voucher';
+  v = v.toLowerCase();
+  if (v.includes('cargo loading') || v.includes('cargo discharged')) return 'cargo-voucher';
+  if (v.includes('bunker')) return 'bunker-voucher';
+  if (v.includes('crew')) return 'crew-voucher';
+  return 'service-voucher';
+}
+
+// ===================== RENDER VESSEL CARDS =====================
+function renderVesselCards(vesselData) {
+  const grid = document.getElementById('vesselGrid');
+  grid.innerHTML = '';
+  document.getElementById('vesselLoadState').style.display = 'none';
+
+  if (!vesselData.length) {
+    grid.innerHTML = '<div class="data-state error">No vessel data found.</div>';
+    return;
+  }
+
+  const maxBunker = Math.max(...vesselData.map(v => v.bunkerOut), 1);
+
+  vesselData.forEach(vessel => {
+    const sc = getStatusConfig(vessel.status);
+    const color = getVesselColor(vessel.name);
+    const cargoBarWidth = vessel.cargoOnBoard > 0 ? Math.min(100, (vessel.cargoOnBoard / vessel.capacity) * 100) : 0;
+    const cargoPercent = vessel.cargoOnBoard > 0 ? Math.min(100, (vessel.cargoOnBoard / vessel.capacity) * 100).toFixed(1) : 0;
+    const bunkerBarWidth = vessel.bunkerOut > 0 ? Math.max(6, (vessel.bunkerOut / maxBunker) * 100) : 0;
+
+    const card = document.createElement('div');
+    card.className = 'vessel-card';
+    card.onclick = () => {
+      document.querySelectorAll('.vessel-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      filterLog(vessel.name, null);
+    };
+    card.innerHTML = `
+      <div class="card-top-bar" style="background: linear-gradient(90deg, ${color}, ${color}88)"></div>
+      <div class="card-header">
+        <div>
+          <div class="vessel-name">${vessel.name}</div>
+          <div class="vessel-type">${vessel.cargoProduct !== '—' ? vessel.cargoProduct : 'Tanker'}</div>
+        </div>
+        <div class="status-badge ${sc.cls}">
+          <span class="status-dot"></span>
+          ${vessel.status || 'Unknown'}
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="metric">
+          <div class="metric-label">Cargo on Board</div>
+          <div class="metric-value ${vessel.cargoOnBoard > 0 ? 'cargo-val' : 'zero'}">
+            ${vessel.cargoOnBoard > 0 ? vessel.cargoOnBoard.toFixed(1) : '—'}
+          </div>
+          <div class="metric-unit">${vessel.cargoOnBoard > 0 ? `${cargoPercent}% of ${vessel.capacity.toLocaleString()} MT` : 'No cargo'}</div>
+          <div class="metric-bar"><div class="metric-bar-fill cargo-bar" style="width:${cargoBarWidth}%"></div></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Bunker (Self-Use)</div>
+          <div class="metric-value ${vessel.bunkerOut > 0 ? 'bunker-val' : 'zero'}">
+            ${vessel.bunkerOut > 0 ? vessel.bunkerOut.toFixed(1) : '—'}
+          </div>
+          <div class="metric-unit">${vessel.bunkerOut > 0 ? 'MT consumed' : 'No consumption'}</div>
+          <div class="metric-bar"><div class="metric-bar-fill bunker-bar" style="width:${bunkerBarWidth}%"></div></div>
+        </div>
+      </div>
+      ${vessel.eta ? `<div class="card-eta"><span class="eta-badge">🧭 ETA: ${vessel.eta}</span></div>` : ''}
+      <div class="card-footer">
+        <span class="port-icon">📍</span>
+        <span class="port-name">${vessel.port && vessel.port !== '—' ? vessel.port : 'Position not reported'}</span>
+        <span class="last-update">${vessel.lastUpdate}</span>
+        ${VESSEL_MMSI[vessel.name] && VESSEL_MMSI[vessel.name].mmsi ? `
+          <a href="https://www.marinetraffic.com/en/ais/details/ships/mmsi:${VESSEL_MMSI[vessel.name].mmsi}" target="_blank"
+            style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.5px;color:var(--accent);background:rgba(0,158,132,0.08);border:1px solid rgba(0,158,132,0.2);text-decoration:none;white-space:nowrap;"
+            onclick="event.stopPropagation()">📡 AIS</a>
+        ` : ''}
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ===================== RENDER LOG TABLE =====================
+function renderLogTable(rows, filter) {
+  const tbody = document.getElementById('logBody');
+  tbody.innerHTML = '';
+  document.getElementById('logLoadState').style.display = 'none';
+  document.getElementById('logScroll').style.display = 'block';
+
+  const filtered = filter === 'all' ? rows : rows.filter(r => (r['Vessel'] || '').trim() === filter);
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);font-family:\'DM Mono\',monospace;font-size:11px;padding:24px">No records found</td></tr>';
+    return;
+  }
+
+  // Sort by date desc, then time desc
+  const sorted = [...filtered].sort((a, b) => {
+    const da = new Date((a['Date'] || '') + ' ' + (a['Time'] || ''));
+    const db = new Date((b['Date'] || '') + ' ' + (b['Time'] || ''));
+    return db - da;
+  });
+
+  sorted.forEach(row => {
+    const vessel = (row['Vessel'] || '').trim();
+    const color = getVesselColor(vessel);
+    const status = (row['Status'] || '').trim();
+    const sc = getStatusConfig(status);
+    const voucher = (row['Voucher Type'] || '').trim();
+    const product = (row['Product'] || '').trim();
+    const qtyIn = parseFloat(row['Qty In']);
+    const qtyOut = parseFloat(row['Qty Out']);
+    const amount = parseFloat(row['Amount']) || 0;
+    const particular = (row['Particular'] || '').trim();
+    const vClass = getVoucherClass(voucher);
+    const date = formatDate(row['Date'] || '');
+    const time = formatTime(row['Time'] || '');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:nowrap">${date}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${time}</td>
+      <td><span class="vessel-tag" style="background:${color}18;color:${color};border:1px solid ${color}33">${vessel}</span></td>
+      <td><span class="status-badge ${sc.cls}" style="font-size:8px"><span class="status-dot"></span>${status}</span></td>
+      <td><span class="voucher-type ${vClass}">${voucher || '—'}</span></td>
+      <td>${product && product !== '—' && !product.match(/^nan$/i) ? `<span class="product-pill">${product}</span>` : '<span style="color:var(--text3);font-size:11px">—</span>'}</td>
+      <td>${!isNaN(qtyIn) && isCargoProduct(product) ? `<span class="qty-in">+${qtyIn.toFixed(1)}</span>` : '<span class="qty-zero">—</span>'}</td>
+      <td>${!isNaN(qtyOut) && qtyOut > 0 ? `<span class="qty-out">-${qtyOut.toFixed(1)}</span>` : '<span class="qty-zero">—</span>'}</td>
+      <td class="${amount > 0 ? 'amount-cell' : 'amount-cell amount-zero'}">${amount > 0 ? 'AED ' + amount.toLocaleString('en-AE', {maximumFractionDigits:0}) : '—'}</td>
+      <td><span class="particular-text" title="${particular}">${particular}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ===================== FILTER =====================
+function filterLog(vessel, btn) {
+  currentFilter = vessel;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderLogTable(allRows, vessel);
+}
+
+// ===================== FILTER BUTTONS =====================
+function buildFilterButtons(rows) {
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = '<span class="filter-label">FILTER:</span>';
+
+  const allBtn = document.createElement('button');
+  allBtn.className = 'filter-btn active';
+  allBtn.textContent = 'All Vessels';
+  allBtn.onclick = () => filterLog('all', allBtn);
+  bar.appendChild(allBtn);
+
+  const vessels = [...new Set(rows.map(r => (r['Vessel'] || '').trim()).filter(Boolean))].sort();
+  vessels.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.textContent = name;
+    btn.onclick = () => {
+      document.querySelectorAll('.vessel-card').forEach(c => c.classList.remove('selected'));
+      filterLog(name, btn);
+    };
+    bar.appendChild(btn);
+  });
+}
+
+// ===================== SUMMARY =====================
+function renderSummary(vesselData, rows) {
+  const activeStatuses = ['Loading in Progress','Discharging in Progress','Underway','On the Way to Next Position / Port'];
+  const active = vesselData.filter(v => activeStatuses.includes(v.status)).length;
+  const totalQtyIn = rows.reduce((s, r) => s + (parseFloat(r['Qty In']) || 0), 0);
+  const totalAmount = rows.reduce((s, r) => s + (parseFloat(r['Amount']) || 0), 0);
+
+  document.getElementById('totalVessels').textContent = vesselData.length;
+  document.getElementById('activeOps').textContent = active;
+  document.getElementById('totalQtyIn').textContent = totalQtyIn.toFixed(1) + ' T';
+  document.getElementById('totalAmount').textContent = 'AED ' + (totalAmount / 1000).toFixed(0) + 'K';
+}
+
+// ===================== FETCH ENGINE =====================
+let dataSource = 'unknown';
+
+async function fetchFromAppsScript() {
+  // Apps Script returns JSON directly — no CSV parsing needed
+  const url = APPS_SCRIPT_URL + '?_t=' + Date.now();
+  const res = await fetch(url, { cache: 'no-cache' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  if (json.error) throw new Error('Script error: ' + json.error);
+  if (!json.rows || !json.rows.length) throw new Error('No rows returned from script');
+  dataSource = 'Apps Script ⚡ real-time';
+  return json.rows; // already an array of objects with correct keys
+}
+
+async function fetchFromCSVProxy() {
+  const errors = [];
+  for (let i = 0; i < PROXY_CHAIN.length; i++) {
+    try {
+      const busted = addCacheBust(CSV_BASE_URL);
+      const proxyUrl = PROXY_CHAIN[i](busted);
+      const res = await fetch(proxyUrl, { cache: 'no-cache' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if (!text || text.length < 30) throw new Error('Empty response');
+      if (text.trim().startsWith('<')) throw new Error('Got HTML (proxy error page)');
+      const parsed = parseCSVSmart(text);
+      const rows = processRows(parsed);
+      if (!rows.length) throw new Error('CSV parsed but 0 data rows');
+      dataSource = 'CSV proxy ' + (i + 1);
+      return rows;
+    } catch(e) {
+      errors.push('Proxy ' + (i+1) + ': ' + e.message);
+      console.warn('Proxy ' + (i+1) + ' failed:', e.message);
+    }
+  }
+  throw new Error('All proxies failed:\n' + errors.join('\n'));
+}
+
+// ===================== FETCH & RENDER =====================
+async function fetchAndRender() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+
+  document.getElementById('vesselLoadState').style.display = 'flex';
+  document.getElementById('vesselLoadState').innerHTML = '<div class="spinner"></div> Fetching live data…';
+  document.getElementById('logLoadState').style.display = 'flex';
+  document.getElementById('logLoadState').innerHTML = '<div class="spinner"></div> Loading activity log…';
+  document.getElementById('logScroll').style.display = 'none';
+
+  try {
+    // Try Apps Script first (instant), fall back to CSV proxies
+    if (APPS_SCRIPT_URL && APPS_SCRIPT_URL.startsWith('https://')) {
+      try {
+        allRows = await fetchFromAppsScript();
+      } catch(e) {
+        console.warn('Apps Script failed, falling back to CSV proxy:', e.message);
+        allRows = await fetchFromCSVProxy();
+      }
+    } else {
+      allRows = await fetchFromCSVProxy();
+    }
+
+    if (!allRows.length) throw new Error('No data rows found. Please add entries to the Updates sheet.');
+
+    const vesselData = deriveVesselData(allRows);
+    renderVesselCards(vesselData);
+    renderLogTable(allRows, currentFilter);
+    buildFilterButtons(allRows);
+    renderSummary(vesselData, allRows);
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    document.getElementById('lastFetchTime').textContent = timeStr + ' · via ' + dataSource;
+    document.getElementById('lastFetchBar').style.display = 'flex';
+    document.getElementById('footerRefresh').textContent = 'Last sync: ' + timeStr + ' (' + allRows.length + ' entries)';
+
+  } catch (err) {
+    console.error('Fetch error:', err);
+    const msg = err.message.replace(/\n/g, '<br>');
+    document.getElementById('vesselLoadState').innerHTML =
+      `<div style="text-align:center"><div style="color:var(--accent4);font-size:13px;margin-bottom:8px">⚠ Could not load data</div>
+       <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);max-width:500px;line-height:1.6">${msg}</div>
+       <button onclick="fetchAndRender()" style="margin-top:12px;padding:6px 16px;border-radius:20px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-family:'DM Mono',monospace;font-size:11px;cursor:pointer">↻ Try Again</button></div>`;
+    document.getElementById('logLoadState').innerHTML = '';
+    document.getElementById('logLoadState').style.display = 'none';
+  }
+
+  btn.classList.remove('spinning');
+}
+
+// ===================== VESSEL MMSI DATA =====================
+const VESSEL_MMSI = {
+  "Hazi 1":          { mmsi: "649081582" },
+  "DIB":             { mmsi: "306708000" },
+  "Al Tarf":         { mmsi: "678000441" },
+  "Glory 1":         { mmsi: "341368002" },
+  "Arabian Energy":  { mmsi: "306295000" },
+  "Reyukaisen Karou":{ mmsi: null },
+  "Sea Force":       { mmsi: null },
+};
+
+// ===================== RENDER TRACKING CARDS =====================
+function renderTrackingCards() {
+  const container = document.getElementById('trackingCards');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const vessels = Object.entries(VESSEL_MMSI);
+  let trackedCount = vessels.filter(([, v]) => v.mmsi).length;
+  const countEl = document.getElementById('trackedCount');
+  if (countEl) countEl.textContent = trackedCount + ' tracked';
+
+  vessels.forEach(([name, data]) => {
+    const color = getVesselColor(name);
+    const mmsi = data.mmsi;
+    const mtUrl = mmsi
+      ? `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${mmsi}`
+      : null;
+    const mtTrackUrl = mmsi
+      ? `https://www.marinetraffic.com/en/ais/home/centerx:55.5/centery:24.5/zoom:8/mmsi:${mmsi}`
+      : null;
+
+    const card = document.createElement('div');
+    card.className = 'tracking-vessel-card';
+    card.innerHTML = `
+      <div class="tvc-bar" style="background: linear-gradient(90deg, ${color}, ${color}66)"></div>
+      <div class="tvc-body">
+        <div class="tvc-top">
+          <div>
+            <div class="tvc-name">${name}</div>
+            <div class="tvc-mmsi">${mmsi ? 'MMSI · ' + mmsi : 'MMSI not assigned'}</div>
+          </div>
+        </div>
+        <div class="tvc-actions">
+          ${mmsi ? `
+            <a href="${mtTrackUrl}" target="_blank" class="tvc-btn tvc-btn-track">📡 Track Live</a>
+            <a href="${mtUrl}" target="_blank" class="tvc-btn tvc-btn-info">ℹ Vessel Info</a>
+          ` : `
+            <span class="tvc-no-mmsi">⚠ No MMSI — tracking unavailable</span>
+          `}
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ===================== DATE / TIME =====================
+function updateDate() {
+  const now = new Date();
+  const opts = { weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' };
+  document.getElementById('currentDate').textContent = now.toLocaleDateString('en-AE', opts);
+}
+
+// ===================== INIT =====================
+updateDate();
+setInterval(updateDate, 60000);
+renderTrackingCards();
+fetchAndRender();
+// Auto-refresh every 2 minutes
+setInterval(fetchAndRender, 2 * 60 * 1000);
+</script>
+</body>
+</html>

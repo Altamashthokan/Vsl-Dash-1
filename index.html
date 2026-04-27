@@ -334,16 +334,15 @@
   }
 
   .map-card-header {
-    padding: 12px 18px;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+    padding: 12px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
     background: linear-gradient(135deg, rgba(0,158,132,0.04), rgba(2,132,199,0.04));
   }
 
   .map-card-title {
-    font-family: "DM Mono", monospace; font-size: 11px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
     letter-spacing: 2px; color: var(--text2); text-transform: uppercase;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 8px; white-space: nowrap;
   }
 
   .map-live-dot {
@@ -357,8 +356,8 @@
   }
 
   .vessel-tab {
-    padding: 5px 13px; border-radius: 20px;
-    font-family: "DM Mono", monospace; font-size: 10px; letter-spacing: 0.5px;
+    padding: 5px 12px; border-radius: 20px;
+    font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.5px;
     cursor: pointer; border: 1px solid var(--border);
     background: transparent; color: var(--text2);
     transition: all 0.18s; white-space: nowrap;
@@ -368,33 +367,45 @@
   .vessel-tab.overview-tab.active { background: var(--accent2); border-color: var(--accent2); }
   .vessel-tab.no-mmsi { opacity: 0.45; cursor: not-allowed; }
 
-  .map-open-link {
-    font-family: "DM Mono", monospace; font-size: 10px;
-    color: var(--accent2); text-decoration: none; letter-spacing: 0.5px;
-    padding: 4px 10px; border-radius: 20px;
-    border: 1px solid rgba(2,132,199,0.25); transition: all 0.2s; white-space: nowrap;
-  }
-  .map-open-link:hover { background: rgba(2,132,199,0.08); border-color: var(--accent2); }
+  .map-embed-wrapper { position: relative; width: 100%; height: 500px; background: #d4e8f0; }
+  #fleet-map { width: 100%; height: 100%; }
 
-  .map-embed-wrapper { position: relative; width: 100%; height: 500px; background: #d4e4f0; overflow: hidden; }
-  #vf-map-container { width: 100%; height: 100%; }
-
-  .map-vessel-info-bar {
+  .map-info-bar {
     padding: 10px 18px; border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     background: rgba(0,158,132,0.03);
+    font-family: 'DM Mono', monospace; font-size: 10px;
   }
-  .mvi-label { font-family: "DM Mono", monospace; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 1.5px; }
-  .mvi-val { font-family: "DM Mono", monospace; font-size: 11px; color: var(--text); font-weight: 500; margin-left: 5px; }
+  .mvi-label { color: var(--text3); text-transform: uppercase; letter-spacing: 1.5px; font-size: 9px; }
+  .mvi-val { color: var(--text); font-weight: 500; margin-left: 4px; }
   .mvi-sep { width: 1px; height: 14px; background: var(--border); }
-  .track-ext-btn {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 14px; border-radius: 20px; font-family: "DM Mono", monospace;
-    font-size: 10px; letter-spacing: 0.5px; text-decoration: none;
-    color: var(--accent); border: 1px solid rgba(0,158,132,0.25);
-    background: rgba(0,158,132,0.06); transition: all 0.2s; white-space: nowrap;
+
+  .track-links { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .track-link-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 11px; border-radius: 20px; font-family: 'DM Mono', monospace;
+    font-size: 9px; letter-spacing: 0.5px; text-decoration: none;
+    border: 1px solid var(--border); color: var(--text2); background: var(--bg2);
+    transition: all 0.2s; white-space: nowrap;
   }
-  .track-ext-btn:hover { background: rgba(0,158,132,0.14); }
+  .track-link-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,158,132,0.06); }
+  .track-link-btn.primary { color: var(--accent); border-color: rgba(0,158,132,0.3); background: rgba(0,158,132,0.06); }
+
+  /* Leaflet popup customisation */
+  .leaflet-popup-content-wrapper {
+    border-radius: 10px !important; font-family: 'DM Sans', sans-serif;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15) !important;
+  }
+  .vessel-popup-name { font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 1px; }
+  .vessel-popup-mmsi { font-family: 'DM Mono', monospace; font-size: 10px; color: #64748b; margin-bottom: 8px; }
+  .vessel-popup-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .vessel-popup-link {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 4px 10px; border-radius: 20px; font-family: 'DM Mono', monospace;
+    font-size: 9px; text-decoration: none; border: 1px solid #e2e8f0;
+    color: #475569; transition: all 0.15s;
+  }
+  .vessel-popup-link:hover { background: #f0fdf4; border-color: #009e84; color: #009e84; }
 
   /* FOOTER */
   footer {
@@ -417,6 +428,8 @@
     .vessel-grid { grid-template-columns: 1fr; }
   }
 </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <div class="wrapper">
@@ -492,21 +505,20 @@
 
     <!-- LIVE VESSEL TRACKING -->
     <div class="tracking-section">
-      <div class="section-title">🛰 Live Vessel Tracking · VesselFinder AIS</div>
+      <div class="section-title">🛰 Live Vessel Tracking · AIS</div>
       <div class="map-card">
         <div class="map-card-header">
           <div class="map-card-title">
             <div class="map-live-dot"></div>
-            AIS Live Positions
+            Fleet Positions
           </div>
           <div class="vessel-tabs" id="vesselTabs"></div>
-          <a id="mapExtLink" href="https://www.vesselfinder.com" target="_blank" class="map-open-link">↗ Open VesselFinder</a>
         </div>
         <div class="map-embed-wrapper">
-          <div id="vf-map-container"></div>
+          <div id="fleet-map"></div>
         </div>
-        <div class="map-vessel-info-bar" id="mapInfoBar">
-          <span class="mvi-label">Select a vessel above to track it live</span>
+        <div class="map-info-bar" id="mapInfoBar">
+          <span class="mvi-label">Click a vessel tab or marker to track it live</span>
         </div>
       </div>
     </div>
@@ -902,7 +914,7 @@ function renderLogTable(rows, filter) {
   const filtered = filter === 'all' ? rows : rows.filter(r => (r['Vessel'] || '').trim() === filter);
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);font-family:'DM Mono',monospace;font-size:11px;padding:24px">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3);font-family:\'DM Mono\',monospace;font-size:11px;padding:24px">No records found</td></tr>';
     return;
   }
 
@@ -1082,140 +1094,207 @@ async function fetchAndRender() {
   btn.classList.remove('spinning');
 }
 
-// ===================== VESSEL MMSI DATA =====================
+// ===================== VESSEL MMSI & TRACKING =====================
 const VESSEL_MMSI = {
-  "Hazi 1":           { mmsi: "649081582" },
-  "DIB":              { mmsi: "306708000" },
-  "Al Tarf":         { mmsi: "678000441" },
-  "Glory 1":          { mmsi: "341368002" },
-  "Arabian Energy":   { mmsi: "306295000" },
-  "Reyukaisen Karou": { mmsi: null },
-  "Sea Force":        { mmsi: null },
+  "Hazi 1":           { mmsi: "649081582", lat: 25.3,  lng: 55.4  },
+  "DIB":              { mmsi: "306708000", lat: 24.5,  lng: 54.6  },
+  "Al Tarf":          { mmsi: "678000441", lat: 26.2,  lng: 56.3  },
+  "Glory 1":          { mmsi: "341368002", lat: 24.9,  lng: 55.1  },
+  "Arabian Energy":   { mmsi: "306295000", lat: 25.8,  lng: 57.0  },
+  "Reyukaisen Karou": { mmsi: null,        lat: 25.0,  lng: 55.0  },
+  "Sea Force":        { mmsi: null,        lat: 24.7,  lng: 54.8  },
 };
 
-let activeVesselTab = "overview";
-let vfMapLoaded = false;
+let fleetMap = null;
+let fleetMarkers = {};
+let activeTab = "overview";
 
-function loadVesselFinderMap(opts) {
-  const container = document.getElementById("vf-map-container");
-  container.innerHTML = "";
+function getTrackingLinks(name, mmsi) {
+  if (!mmsi) return '';
+  const vf  = "https://www.vesselfinder.com/vessels/details/" + mmsi;
+  const mt  = "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + mmsi;
+  const mst = "https://www.myshiptracking.com/?mmsi=" + mmsi;
+  return (
+    '<div class="track-links">' +
+    '<a href="' + vf  + '" target="_blank" class="track-link-btn primary">📡 VesselFinder</a>' +
+    '<a href="' + mt  + '" target="_blank" class="track-link-btn">🗺 MarineTraffic</a>' +
+    '<a href="' + mst + '" target="_blank" class="track-link-btn">🛰 MyShipTracking</a>' +
+    '</div>'
+  );
+}
 
-  // Remove any previous VesselFinder script
-  const old = document.getElementById("vf-script");
-  if (old) old.remove();
+function buildPopupHTML(name, mmsi, color) {
+  const vf  = mmsi ? "https://www.vesselfinder.com/vessels/details/" + mmsi : null;
+  const mt  = mmsi ? "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + mmsi : null;
+  const mst = mmsi ? "https://www.myshiptracking.com/?mmsi=" + mmsi : null;
+  return (
+    '<div>' +
+    '<div class="vessel-popup-name" style="color:' + color + '">' + name + '</div>' +
+    '<div class="vessel-popup-mmsi">' + (mmsi ? 'MMSI: ' + mmsi : 'MMSI not assigned') + '</div>' +
+    (mmsi ? (
+      '<div class="vessel-popup-links">' +
+      '<a href="' + vf  + '" target="_blank" class="vessel-popup-link">📡 VesselFinder</a>' +
+      '<a href="' + mt  + '" target="_blank" class="vessel-popup-link">🗺 MarineTraffic</a>' +
+      '<a href="' + mst + '" target="_blank" class="vessel-popup-link">🛰 MyShipTracking</a>' +
+      '</div>'
+    ) : '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">Add MMSI to enable live tracking</div>') +
+    '</div>'
+  );
+}
 
-  // Set VesselFinder config vars on window
-  window.width  = "100%";
-  window.height = "500";
-  window.names  = true;
+function initFleetMap() {
+  if (fleetMap) return;
 
-  if (opts.mmsi) {
-    window.mmsi       = opts.mmsi;
-    window.show_track = true;
-    window.latitude   = undefined;
-    window.longitude  = undefined;
-    window.zoom       = undefined;
-    delete window.mmsi_list;
-  } else {
-    // Overview: Gulf region
-    delete window.mmsi;
-    window.show_track = false;
-    window.latitude   = "24.5";
-    window.longitude  = "55.5";
-    window.zoom       = "6";
-  }
+  fleetMap = L.map('fleet-map', {
+    center: [24.5, 55.5],
+    zoom: 6,
+    zoomControl: true,
+    attributionControl: true
+  });
 
-  const script = document.createElement("script");
-  script.id  = "vf-script";
-  script.src = "https://www.vesselfinder.com/aismap.js";
-  script.async = true;
-  container.appendChild(script);
+  // Clean maritime-style tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> | AIS links: VesselFinder / MarineTraffic',
+    subdomains: 'abcd', maxZoom: 18
+  }).addTo(fleetMap);
+
+  // Add markers for each vessel
+  Object.entries(VESSEL_MMSI).forEach(([name, data]) => {
+    const color = vesselColors[name] || '#6b7280';
+    const hasMMSI = !!data.mmsi;
+
+    // Custom SVG ship icon
+    const svgIcon = L.divIcon({
+      className: '',
+      html: (
+        '<div style="position:relative;width:36px;height:36px;">' +
+        '<div style="' +
+          'width:36px;height:36px;border-radius:50%;' +
+          'background:' + color + ';' +
+          'border:3px solid #fff;' +
+          'box-shadow:0 2px 10px rgba(0,0,0,0.25);' +
+          'display:flex;align-items:center;justify-content:center;' +
+          'font-size:16px;' +
+          (hasMMSI ? '' : 'opacity:0.55;') +
+        '">⛴</div>' +
+        '<div style="' +
+          'position:absolute;top:-6px;right:-6px;' +
+          'width:12px;height:12px;border-radius:50%;' +
+          'background:' + (hasMMSI ? '#009e84' : '#94a3b8') + ';' +
+          'border:2px solid #fff;' +
+          (hasMMSI ? 'animation:vf-pulse 2s infinite;' : '') +
+        '"></div>' +
+        '</div>'
+      ),
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+      popupAnchor: [0, -20]
+    });
+
+    const marker = L.marker([data.lat, data.lng], { icon: svgIcon })
+      .bindPopup(buildPopupHTML(name, data.mmsi, color), { maxWidth: 280 })
+      .addTo(fleetMap);
+
+    // Vessel name label
+    marker.bindTooltip(name, {
+      permanent: true, direction: 'top', offset: [0, -22],
+      className: 'vessel-label-tooltip'
+    });
+
+    marker.on('click', function() { selectVesselTab(name); });
+    fleetMarkers[name] = marker;
+  });
+
+  // Add pulse animation style once
+  const styleEl = document.createElement('style');
+  styleEl.textContent = (
+    '@keyframes vf-pulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(1.4);opacity:0.6;} }' +
+    '.vessel-label-tooltip { background:rgba(255,255,255,0.92)!important; border:1px solid #e2e8f0!important; ' +
+    'font-family:"DM Mono",monospace!important; font-size:10px!important; font-weight:500!important; ' +
+    'color:#0f172a!important; padding:2px 7px!important; border-radius:20px!important; ' +
+    'box-shadow:0 2px 8px rgba(0,0,0,0.12)!important; white-space:nowrap!important; }' +
+    '.vessel-label-tooltip::before { display:none!important; }'
+  );
+  document.head.appendChild(styleEl);
 }
 
 function updateMapInfoBar(name, mmsi) {
-  const bar = document.getElementById("mapInfoBar");
-  const extLink = document.getElementById("mapExtLink");
-
-  if (!mmsi) {
-    bar.innerHTML = \`<span class="mvi-label">Overview</span><span class="mvi-val">Gulf Region — all AIS vessels</span>\`;
-    extLink.href = "https://www.vesselfinder.com";
-    extLink.textContent = "↗ Open VesselFinder";
+  const bar = document.getElementById('mapInfoBar');
+  if (!bar) return;
+  if (name === 'overview') {
+    bar.innerHTML = (
+      '<span class="mvi-label">Showing</span><span class="mvi-val">All Fleet Vessels — Gulf Region</span>' +
+      '<div class="mvi-sep"></div>' +
+      '<span class="mvi-label">Click any vessel marker for live tracking links</span>'
+    );
     return;
   }
-
-  const vfUrl = \`https://www.vesselfinder.com/vessels/details/\${mmsi}\`;
-  extLink.href = vfUrl;
-  extLink.textContent = "↗ " + name + " on VesselFinder";
-
-  bar.innerHTML = \`
-    <span class="mvi-label">Vessel</span><span class="mvi-val">\${name}</span>
-    <div class="mvi-sep"></div>
-    <span class="mvi-label">MMSI</span><span class="mvi-val">\${mmsi}</span>
-    <div class="mvi-sep"></div>
-    <span class="mvi-label">Track</span><span class="mvi-val">Last 24 hrs shown</span>
-    <a href="\${vfUrl}" target="_blank" class="track-ext-btn">📡 Full Details</a>
-  \`;
+  const infoHTML = (
+    '<span class="mvi-label">Vessel</span><span class="mvi-val">' + name + '</span>' +
+    '<div class="mvi-sep"></div>' +
+    '<span class="mvi-label">MMSI</span><span class="mvi-val">' + (mmsi || '—') + '</span>' +
+    (mmsi ? getTrackingLinks(name, mmsi) : '<span style="color:var(--text3);font-size:9px;margin-left:8px;">No MMSI — tracking unavailable</span>')
+  );
+  bar.innerHTML = infoHTML;
 }
 
 function selectVesselTab(key) {
-  activeVesselTab = key;
-  document.querySelectorAll(".vessel-tab").forEach(t => t.classList.remove("active"));
-  const tab = document.getElementById("tab-" + key);
-  if (tab) tab.classList.add("active");
+  activeTab = key;
+  document.querySelectorAll('.vessel-tab').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById('vtab-' + key);
+  if (tab) tab.classList.add('active');
 
-  const vessel = VESSEL_MMSI[key];
-  const mmsi = vessel ? vessel.mmsi : null;
-  loadVesselFinderMap(mmsi ? { mmsi } : {});
-  updateMapInfoBar(key === "overview" ? "Overview" : key, mmsi);
+  if (key === 'overview') {
+    fleetMap.setView([24.5, 55.5], 6);
+    updateMapInfoBar('overview', null);
+    return;
+  }
+
+  const data = VESSEL_MMSI[key];
+  if (!data) return;
+  fleetMap.setView([data.lat, data.lng], 9);
+  if (fleetMarkers[key]) fleetMarkers[key].openPopup();
+  updateMapInfoBar(key, data.mmsi);
 }
 
 function buildVesselTabs() {
-  const bar = document.getElementById("vesselTabs");
+  const bar = document.getElementById('vesselTabs');
   if (!bar) return;
-  bar.innerHTML = "";
 
-  // Overview tab
-  const overviewBtn = document.createElement("button");
-  overviewBtn.className = "vessel-tab overview-tab active";
-  overviewBtn.id = "tab-overview";
-  overviewBtn.textContent = "🌍 Gulf Overview";
-  overviewBtn.onclick = () => selectVesselTab("overview");
+  const overviewBtn = document.createElement('button');
+  overviewBtn.className = 'vessel-tab overview-tab active';
+  overviewBtn.id = 'vtab-overview';
+  overviewBtn.textContent = '🌍 Overview';
+  overviewBtn.onclick = () => selectVesselTab('overview');
   bar.appendChild(overviewBtn);
 
   Object.entries(VESSEL_MMSI).forEach(([name, data]) => {
-    const btn = document.createElement("button");
-    btn.id = "tab-" + name;
-    btn.className = "vessel-tab" + (data.mmsi ? "" : " no-mmsi");
-    btn.textContent = (data.mmsi ? "📡 " : "⚠ ") + name;
-    btn.title = data.mmsi ? "MMSI: " + data.mmsi : "No MMSI assigned";
-    if (data.mmsi) {
-      btn.onclick = () => selectVesselTab(name);
-    }
+    const btn = document.createElement('button');
+    btn.id = 'vtab-' + name;
+    btn.className = 'vessel-tab' + (data.mmsi ? '' : ' no-mmsi');
+    btn.textContent = (data.mmsi ? '📡 ' : '⚠ ') + name;
+    btn.title = data.mmsi ? 'MMSI: ' + data.mmsi : 'No MMSI assigned';
+    if (data.mmsi) btn.onclick = () => selectVesselTab(name);
     bar.appendChild(btn);
   });
-
-  // Load overview map on init
-  loadVesselFinderMap({});
-  updateMapInfoBar("Overview", null);
 }
 
-// Also add AIS badge to vessel cards — called after renderVesselCards
 function addAISBadgesToCards() {
-  document.querySelectorAll(".vessel-card").forEach(card => {
-    const nameEl = card.querySelector(".vessel-name");
+  document.querySelectorAll('.vessel-card').forEach(function(card) {
+    const nameEl = card.querySelector('.vessel-name');
     if (!nameEl) return;
     const name = nameEl.textContent.trim();
     const data = VESSEL_MMSI[name];
     if (!data || !data.mmsi) return;
-    const footer = card.querySelector(".card-footer");
-    if (!footer || footer.querySelector(".ais-badge")) return;
-    const badge = document.createElement("a");
-    badge.className = "ais-badge";
-    badge.href = \`https://www.vesselfinder.com/vessels/details/\${data.mmsi}\`;
-    badge.target = "_blank";
-    badge.style.cssText = "display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.5px;color:var(--accent);background:rgba(0,158,132,0.08);border:1px solid rgba(0,158,132,0.2);text-decoration:none;white-space:nowrap;";
-    badge.innerHTML = "📡 AIS";
-    badge.onclick = e => e.stopPropagation();
+    const footer = card.querySelector('.card-footer');
+    if (!footer || footer.querySelector('.ais-badge')) return;
+    const badge = document.createElement('a');
+    badge.className = 'ais-badge';
+    badge.href = 'https://www.vesselfinder.com/vessels/details/' + data.mmsi;
+    badge.target = '_blank';
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-family:"DM Mono",monospace;font-size:9px;letter-spacing:0.5px;color:var(--accent);background:rgba(0,158,132,0.08);border:1px solid rgba(0,158,132,0.2);text-decoration:none;white-space:nowrap;';
+    badge.innerHTML = '📡 AIS';
+    badge.onclick = function(e) { e.stopPropagation(); };
     footer.appendChild(badge);
   });
 }
@@ -1231,6 +1310,7 @@ function updateDate() {
 updateDate();
 setInterval(updateDate, 60000);
 buildVesselTabs();
+initFleetMap();
 fetchAndRender();
 // Auto-refresh every 2 minutes
 setInterval(fetchAndRender, 2 * 60 * 1000);
